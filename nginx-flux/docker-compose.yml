@@ -1,0 +1,92 @@
+version: "3.3"
+
+services:
+  nginx:
+    image: nginx
+    container_name: nginx-flux
+    ports:
+      - 80
+    labels:
+      - "traefik.port=80"
+      - "traefik.docker.network=web"
+      - "traefik.frontend.passHostHeader=true"
+      - "traefik.enable=true" # enables the service
+      - "traefik.http.routers.nginx.rule=Host(`cp.playragnarokrewind.com`)" # domain to expose on
+      - "traefik.http.routers.nginx.entrypoints=websecure" # if you named your 443 entrypoint differently than webscure, substitute it here!
+      - "traefik.http.routers.nginx.tls.certresolver=cloudflare" # if you named your cert resolver differently than letsencrypt, substitute it here!
+    networks:
+      - web # Traefik network! If you named it differently, substitute it here and below.
+      - db_network
+    depends_on:
+      - mysql
+      - mysql2
+    volumes:
+      - ./html/:/html
+      - ./etc/conf.d:/etc/nginx/conf.d
+      - ./logs/:/var/log/nginx
+    links:
+      - php
+
+  mysql:
+    image: 'mysql:8.0'
+    environment:
+      MYSQL_ROOT_PASSWORD: R3w1ndR0@2021
+      MYSQL_DATABASE: ragnarok   # This name is internal to the DB
+      MYSQL_USER: ragnarok
+      MYSQL_PASSWORD: R3w1ndR0@2021
+    networks:
+      db_network:
+        ipv4_address: 172.22.1.2
+    ports:
+      - 3309
+    labels:
+      - traefik.enable=false
+  mysql2:
+    image: 'mysql:8.0'
+    environment:
+      MYSQL_ROOT_PASSWORD: R3w1ndR0@2021
+      MYSQL_DATABASE: logs
+      MYSQL_USER: ragnarok
+      MYSQL_PASSWORD: R3w1ndR0@2021
+    networks:
+      db_network:
+        ipv4_address: 172.22.1.5
+    ports:
+      - 3306
+    labels:
+      - traefik.enable=false
+  php:
+    build:
+      context: .
+      dockerfile: PHP.Dockerfile
+    volumes:
+      - ./html:/html
+    networks:
+      - web
+    links:
+      - mysql
+      - mysql2
+  adminer:
+    image: 'adminer:latest'
+    restart: 'always'
+    labels:
+      - "traefik.enable=true" # enables the service
+      - "traefik.backend=adminer"
+      - "traefik.http.routers.adminer.rule=Host(`db.playragnarokrewind.com`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls.certresolver=cloudflare"
+
+    networks:
+      - db_network
+      - web
+    depends_on:
+      - mysql
+      - mysql2
+networks:
+  web:
+    external: true
+  db_network:
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+    external: false
